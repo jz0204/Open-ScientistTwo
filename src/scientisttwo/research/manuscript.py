@@ -71,7 +71,11 @@ class ManuscriptRecord(Record):
     table_ids: list[str] = Field(default_factory=list, max_length=128)
     figure_ids: list[str] = Field(default_factory=list, max_length=128)
     synthetic_agents: bool = False
-    concern_responses: list[ConcernResponse] = Field(default_factory=list, max_length=128)
+    concern_responses: list[ConcernResponse] = Field(
+        default_factory=list, max_length=128,
+        description="Respond once to each concern_id in supplementary_coverage. "
+                    "Return [] when coverage is empty. Put other scientific limitations in limitations.",
+    )
 
     @model_validator(mode="after")
     def unique_identifiers(self):

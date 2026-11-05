@@ -184,6 +184,37 @@ def campaign(tmp_path, **options):
     return controller, store, runner, agents, transport
 
 
+def test_writer_receives_numeric_and_empty_concern_errors_in_one_correction(tmp_path):
+    controller, store, _, agents, _ = campaign(tmp_path)
+    controller.config.agent_output_retries = 1
+    original = agents.respond
+    feedback = []
+
+    def respond(role, inputs):
+        value = original(role, inputs)
+        if role == "initial_drafter":
+            assert inputs["supplementary_coverage"] == []
+            if "output_correction" in inputs:
+                feedback.extend(inputs["output_correction"]["errors"])
+            else:
+                value["abstract"]["text"] += " MSE was 0.01 on development data."
+                value["concern_responses"] = [
+                    {"concern_id": name, "explanation": "A scientific limitation.",
+                     "status": "unaddressed", "experiment_ids": []}
+                    for name in ("component_attribution", "final_test_generalization", "seed_variability")]
+        return value
+
+    agents.responder = respond
+    try:
+        state = controller.run()
+        assert state["status"] == "complete", state
+        assert len(feedback) == 1
+        assert "Section abstract embeds numeric prose" in feedback[0]
+        assert "return concern_responses=[]" in feedback[0]
+    finally:
+        store.close()
+
+
 def test_research_v2_runs_complete_roles_and_binds_writer_evidence(tmp_path):
     controller, store, runner, agents, transport = campaign(tmp_path)
     try:
@@ -198,6 +229,11 @@ def test_research_v2_runs_complete_roles_and_binds_writer_evidence(tmp_path):
         assert "draft" not in roles and "review" not in roles and "ablations" not in roles
         assert roles.index("ablation_planner") < roles.index("ablation_coder") < roles.index("control_reviewer")
         assert roles.index("initial_drafter") < roles.index("draft_enhancer") < roles.index("scientific_review")
+        for role, inputs in agents.seen:
+            if role in {"initial_drafter", "draft_enhancer", "writing_critic", "scientific_review", "meta"}:
+                assert "section.claim_ids" in inputs["section_guidance"]
+            if role in {"writing_critic", "scientific_review"}:
+                assert inputs["selected_candidate"]["files"]
         manuscript = ManuscriptRecord.model_validate(store.json(store.get("research_manuscript")))
         bundle = store.json(store.get("research_manuscript_bundle"))
         ledger = store.json(bundle["ledger_ref"])

@@ -14,6 +14,16 @@ from .literature import LiteratureConfig, NoveltyAssessment, retrieve_literature
 from .diagnostic_stages import DiagnosticStages
 
 
+CANONICAL_SECTION_GUIDANCE = (
+    "The renderer prints linked claims and their ledger values under each section. "
+    "In abstract, results, ablations and discussion, keep section.text qualitative; "
+    "use section.claim_ids to place measurements and comparisons there. "
+    "When revising, preserve valid evidence bindings unless feedback requires changing the claim. "
+    "Use passage_ids only for literature claims, method evidence for method claims, "
+    "and an evidence or source ID for interpretations."
+)
+
+
 ROLE_INSTRUCTIONS = {
     "initial_idea": "Propose one testable seed hypothesis addressing the verified limitations. Use supplied documents only for source_ids. Novelty is independently assessed later; do not certify originality.",
     "additional_idea": "Propose one distinct hypothesis addressing the verified limitations and differences from existing ideas. Respond to prior novelty criticism without inventing references. Novelty is independently assessed.",
@@ -493,12 +503,15 @@ class ResearchStages(DiagnosticStages):
 
         def validate(value):
             result = validate_manuscript(value, ledger, self.sources)
-            if result.status != "pass":
-                raise AgentOutputError("; ".join(result.errors))
+            errors = list(result.errors)
+            try:
+                self.validate_concern_responses(value)
+            except AgentOutputError as error:
+                errors.append(str(error))
+            if errors:
+                raise AgentOutputError("; ".join(errors))
             if value.synthetic_agents != self.backend.synthetic:
                 raise AgentOutputError("Manuscript synthetic-agent declaration differs from the actual backend")
-            view = legacy_draft_view(value, ledger)
-            self.validate_concern_responses(view)
             if previous is not None and canonical(value.model_dump()) == canonical(previous):
                 raise AgentOutputError("Manuscript revision returned unchanged content")
 
@@ -509,7 +522,8 @@ class ResearchStages(DiagnosticStages):
         def write(pass_key, role, context):
             nonlocal rendered
             if not paperorchestra:
-                return self.ask(pass_key, role, context, ManuscriptRecord, validator=validate)
+                return self.ask(pass_key, role, {**context, "section_guidance": CANONICAL_SECTION_GUIDANCE},
+                                ManuscriptRecord, validator=validate)
             from ..integrations.paperorchestra.controller_writer import write_controller_manuscript
             result = write_controller_manuscript(self, pass_key, context, ledger,
                 previous_manuscript=context.get("previous_manuscript"),
@@ -524,6 +538,7 @@ class ResearchStages(DiagnosticStages):
             critique = self.ask(f"{key}/writing-critic/{attempt}", "writing_critic", {
                 "manuscript": manuscript.model_dump(), "ledger": ledger,
                 "sources": self.sources, "pass_index": attempt,
+                "selected_candidate": best["candidate"],
                 "mechanical_checks": validate_manuscript(manuscript, ledger, self.sources).model_dump(),
                 **self.authoritative_writer_context(rendered),
             }, WritingCriticReview)
@@ -563,7 +578,9 @@ class ResearchStages(DiagnosticStages):
 
     def authoritative_writer_context(self, rendered):
         """Give every reviewer the actual submitted source, not just its index."""
-        if rendered is None or self.config.workflow.writer_backend != "paperorchestra":
+        if self.config.workflow.writer_backend == "canonical":
+            return {"section_guidance": CANONICAL_SECTION_GUIDANCE}
+        if rendered is None:
             return {}
         from ..integrations.paperorchestra.manuscript_binding import verify_bound_manifest
         if hasattr(rendered, "model_dump"):
@@ -604,7 +621,9 @@ class ResearchStages(DiagnosticStages):
             if errors:
                 raise AgentOutputError("; ".join(errors))
 
+        method = self.store.json(ledger["entries"]["method:selected_source"]["evidence_ref"])
         review = self.ask(key, "scientific_review", {
+            "selected_candidate": self.store.json(method["candidate_ref"]),
             "score_contract": {"minimum": 1, "maximum": 10, "score_scale": 10,
                 "early_stop_threshold": 8, "acceptance_scope": "internal_workflow_only",
                 "instruction": "Use the same 1–10 scale for all ratings. The criterion is faithful evidence and the declared task scope, not invented novelty. A low score is not an executable experiment request; report only real, stable concerns."},

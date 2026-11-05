@@ -831,7 +831,10 @@ class ResearchController(ResearchStages):
         coverage = {row["concern_id"]: row for row in self.supplementary_coverage()}
         responses = {row.concern_id: row for row in draft.concern_responses}
         if len(responses) != len(draft.concern_responses) or set(responses) != set(coverage):
-            raise AgentOutputError("Draft must address exactly every supplied supplementary concern once")
+            if not coverage:
+                raise AgentOutputError("supplementary_coverage is empty: return concern_responses=[]; "
+                                       "put scientific limitations in limitations")
+            raise AgentOutputError(f"Draft must address exactly every supplied supplementary concern once: {sorted(coverage)}")
         for identifier, response in responses.items():
             actual = coverage[identifier]
             if not set(response.experiment_ids) <= set(actual["observation_ids"]):
