@@ -245,7 +245,7 @@ def test_suite_api_preflight_checks_dispatch_requirements_without_calls(
     from scientisttwo import process
 
     config = native_config(tmp_path, provider=api_provider(), **updates)
-    monkeypatch.setattr(suite.shutil, "which", forbidden)
+    monkeypatch.setattr(cli.shutil, "which", forbidden)
     monkeypatch.setattr(workspace_task, "preflight", lambda native: {"ready": True, "errors": []})
     monkeypatch.setattr(workspace, "validate_baseline_contract", lambda adapter: None)
     monkeypatch.setattr(workspace, "live_readiness", lambda adapter: {"ready": True})

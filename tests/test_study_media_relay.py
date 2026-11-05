@@ -9,6 +9,7 @@ import threading
 import time
 
 from scientisttwo.models import Record
+from test_backends import FEATURE_PROBE
 import pytest
 
 from scientisttwo.studies import media_relay as relay
@@ -46,6 +47,8 @@ def fake_cli(tmp_path):
     counter = tmp_path / "invocations.jsonl"
     cli.write_text("#!" + sys.executable + "\n" + "\n".join([
         "import json,sys,pathlib,hashlib",
+        "if sys.argv[1:] == ['login', 'status']: sys.exit(0)",
+        FEATURE_PROBE,
         f"counter=pathlib.Path({str(counter)!r})",
         "with counter.open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')",
         "assert sys.argv[1] == 'exec'",

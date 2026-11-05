@@ -7,7 +7,6 @@ protocol and outcome. It never pools heterogeneous benchmark scores.
 import json
 import math
 from pathlib import Path
-import shutil
 import sqlite3
 import time
 import random
@@ -266,8 +265,8 @@ def check_assignment(config):
     checks["images"] = images
     checks["provider"] = config.provider.kind
     if config.provider.kind == "codex":
-        checks["codex_installed"] = shutil.which("codex") is not None
-        checks["provider_ready"] = checks["codex_installed"]
+        from .cli import check_provider
+        checks.update(check_provider(config.provider))
     else:
         from ..providers.config import readiness
         checks["provider_configuration"] = readiness(config.provider)
@@ -290,7 +289,8 @@ def check_assignment(config):
     checks["ready"] = (checks["ready"] and checks["provider_ready"]
                        and checks["writer_ready"] and all(images.values()))
     checks["model_access"] = "unverified_without_inference"
-    checks["authentication"] = "not_checked"
+    if config.provider.kind != "codex":
+        checks["authentication"] = "not_checked"
     return checks
 
 

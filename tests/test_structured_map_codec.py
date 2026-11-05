@@ -5,6 +5,7 @@ import json
 import sys
 
 from pydantic import Field, ValidationError
+from test_backends import FEATURE_PROBE
 import pytest
 
 from scientisttwo.backends import (
@@ -81,6 +82,7 @@ def fake_cli(tmp_path, raw_output):
     capture = tmp_path / "captured-wire-input.json"
     path.write_text(f'''#!{sys.executable}
 import json,pathlib,sys
+{FEATURE_PROBE}
 args=sys.argv
 assert args[args.index('--model')+1]=='fake-model'
 assert '--strict-config' in args and '--output-schema' in args

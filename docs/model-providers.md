@@ -107,7 +107,11 @@ uv run scientisttwo live-pilot check live-manifest.local.json
 ```
 
 The check validates local configuration, credential presence, frozen source and
-image availability. Provider access and model capability remain unverified until
+image availability. For Codex it also probes the selected CLI with `features list`
+before dispatch. Required tool controls must exist. Version-specific controls
+(such as `view_image` and `skill_search`) are disabled when advertised. For an
+alternate CLI, pass the same `--executable PATH` to check, run and resume.
+Provider access and model capability remain unverified until
 a separately authorized request runs. API providers do not require Codex CLI.
 
 Execution still requires `--allow-live`:

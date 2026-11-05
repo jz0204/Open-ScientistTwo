@@ -1,5 +1,6 @@
 """Live-pilot contracts with an executable fake CLI; no actual model or container."""
 from copy import deepcopy
+import json
 import time
 
 import pytest
@@ -109,6 +110,23 @@ def test_completed_resume_never_constructs_backend_or_executor_and_adds_no_opera
     assert [dict(row) for row in store.db.execute("SELECT * FROM live_operations")] == before
 
 
+def test_incompatible_cli_fails_check_and_pilot_before_dispatch(tmp_path, fake_cli):
+    from scientisttwo.live.cli import check_provider
+
+    cli, counter = fake_cli
+    script = cli.read_text().replace("shell_tool apps hooks", "shell_tool apps")
+    cli.write_text(script)
+    store, config, _, _, _ = setup(tmp_path)
+    checked = check_provider(config.provider, str(cli))
+    assert checked["codex_authenticated"] and not checked["provider_ready"]
+    assert "hooks" in checked["codex_feature_error"]
+    with pytest.raises(BackendError, match="hooks"):
+        live.DirectPilotExecutor(store.root / "model-ledger", config, time.time() + 60,
+                                 executable=str(cli), allow_live=True)
+    assert not counter.exists()
+    assert not list(store.root.rglob("claim.json"))
+
+
 def test_real_fake_cli_roundtrip_has_durable_direct_accounting_without_queue(tmp_path, fake_cli):
     cli, counter = fake_cli
     store, config, _, _, _ = setup(tmp_path)
@@ -122,7 +140,8 @@ def test_real_fake_cli_roundtrip_has_durable_direct_accounting_without_queue(tmp
     assert accounting["claimed_calls"] == accounting["completed_receipts"] == 1
     assert accounting["known_observed_tokens"] == 12 and accounting["usage_complete"]
     assert accounting["transport"] == "direct_local_no_queue"
-    assert len(counter.read_text().splitlines()) == 1
+    (argv,) = map(json.loads, counter.read_text().splitlines())
+    assert "view_image" not in argv and "skill_search" not in argv and "unified_exec" in argv
     assert not list(store.root.rglob("*.request.json"))
 
 

@@ -10,7 +10,7 @@ import time
 
 from pydantic import Field
 
-from ...backends import BackendError, CodexBackend
+from ...backends import BackendError, CodexBackend, local_codex_features
 from ...models import Record
 from ...process import run_process
 from ...store import file_digest
@@ -95,6 +95,7 @@ class CodexTransport:
         backend = CodexBackend(
             Path.cwd(), self.model, executable=self.executable, allow_live=True,
             timeout=remaining(), executor=execute,
+            features=local_codex_features(self.executable) if self.executor is run_process else None,
         )
         response = backend.invoke("paperorchestra/" + request.role, {
             "task": request.prompt,

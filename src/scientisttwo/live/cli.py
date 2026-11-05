@@ -6,7 +6,7 @@ import shutil
 
 import typer
 
-from ..backends import CodexBackend
+from ..backends import BackendError, CodexBackend, local_codex_features
 from ..process import run_process
 from ..store import Store
 from .adapters import implementation_identity, load_development
@@ -145,7 +145,7 @@ def create(
 
 
 @app.command("check")
-def check(manifest: Path):
+def check(manifest: Path, executable: str = "codex"):
     """Check inputs, adapter, local images and CLI authentication without model calls."""
     config = LiveSpec.model_validate_json(manifest.read_text())
     checks = preflight(config.native)
@@ -154,7 +154,7 @@ def check(manifest: Path):
     validate_baseline_contract(adapter)
     checks["development_adapter"] = config.development.adapter
     checks["adapter_live_readiness"] = live_readiness(adapter)
-    checks.update(check_provider(config.provider))
+    checks.update(check_provider(config.provider, executable))
     if config.provider.kind != "codex" and (
         config.engine_version != "research-v2" or config.token_stop_threshold is None
         or config.model_retries != 0
@@ -197,20 +197,25 @@ def check(manifest: Path):
         raise typer.Exit(2)
 
 
-def check_provider(provider):
+def check_provider(provider, executable="codex"):
     """Check local configuration/auth presence without making an inference call."""
     checks = {"provider": provider.kind, "model_access": "unverified_without_inference"}
     if provider.kind == "codex":
-        checks["codex_installed"] = shutil.which("codex") is not None
+        checks["codex_installed"] = shutil.which(executable) is not None
         checks["codex_authenticated"] = False
+        checks["codex_features_compatible"] = False
         if checks["codex_installed"]:
             # The CLI's status text may contain account details; retain only a bool.
             try:
-                status = run_process(["codex", "login", "status"], 15)
+                status = run_process([executable, "login", "status"], 15)
                 checks["codex_authenticated"] = status.code == 0 and not status.timed_out
+                local_codex_features(executable)
+                checks["codex_features_compatible"] = True
+            except BackendError as error:
+                checks["codex_feature_error"] = str(error)
             except OSError:
                 pass
-        checks["provider_ready"] = checks["codex_authenticated"]
+        checks["provider_ready"] = checks["codex_authenticated"] and checks["codex_features_compatible"]
     else:
         checks["provider_configuration"] = provider_readiness(provider)
         checks["provider_ready"] = checks["provider_configuration"]["ready"]

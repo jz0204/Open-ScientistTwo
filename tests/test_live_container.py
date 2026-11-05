@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 import pandas as pd
+from test_backends import FEATURE_PROBE
 import pytest
 
 from upstream_checkouts import require_upstream
@@ -77,6 +78,7 @@ def fake_codex(path, proposal):
     }
     path.write_text(f"""#!{sys.executable}
 import json, pathlib, sys
+{FEATURE_PROBE}
 argv = sys.argv
 assert '--ignore-user-config' in argv and '--strict-config' in argv
 assert '--disable' in argv and 'shell_tool' in argv

@@ -442,6 +442,43 @@ def structured_schema(schema):
     return StructuredOutputCodec(schema).wire_schema
 
 
+REQUIRED_CODEX_FEATURES = (
+    "shell_tool", "apps", "hooks", "memories", "multi_agent", "multi_agent_v2",
+    "remote_plugin", "plugins", "goals", "shell_snapshot", "browser_use",
+    "computer_use", "image_generation",
+)
+CODEX_FEATURES = REQUIRED_CODEX_FEATURES + (
+    "view_image", "skill_search", "unified_exec", "in_app_browser", "browser_use_external",
+)
+
+
+def local_codex_features(executable):
+    """Probe only on the machine that will dispatch the model request."""
+    result = run_process([str(executable), "features", "list"], 15)
+    if result.code or result.timed_out or result.stdout_truncated:
+        raise BackendError("Codex feature probe failed before inference")
+    rows = (line.split() for line in result.stdout.splitlines())
+    available = {row[0] for row in rows if len(row) >= 3 and row[-1] in {"true", "false"}}
+    missing = set(REQUIRED_CODEX_FEATURES) - available
+    if missing:
+        raise BackendError("Missing required Codex features: " + ", ".join(sorted(missing)))
+    return tuple(name for name in CODEX_FEATURES if name in available)
+
+
+def cli_argv(executable, directory, model, *, images=(), features=CODEX_FEATURES):
+    directory = Path(directory)
+    argv = [str(executable), "exec", "--json", "--ephemeral", "--ignore-user-config",
+            "--strict-config", "--sandbox", "read-only", "--skip-git-repo-check", "--model",
+            model, "--cd", str(directory), "--output-schema", str(directory / "response-schema.json"),
+            "--output-last-message", str(directory / "response.json")]
+    for name in features:
+        argv += ["--disable", name]
+    argv += ["-c", 'web_search="disabled"']
+    for image in images:
+        argv += ["--image", str(image)]
+    return argv + ["-"]
+
+
 class CodexBackend:
     name = "codex"
     synthetic = False
@@ -455,10 +492,12 @@ class CodexBackend:
         allow_live=False,
         timeout=120,
         executor=run_process,
+        features=None,
     ):
         self.workspace, self.model = workspace, model
         self.executable, self.allow_live = executable, allow_live
         self.timeout, self.executor = timeout, executor
+        self.features = features
         self.events = []
 
     def invoke(self, role, inputs, output_schema):
@@ -504,46 +543,9 @@ class CodexBackend:
                 "inputs": wire_inputs,
             }
         ).decode()
-        argv = [
-            self.executable,
-            "exec",
-            "--json",
-            "--ephemeral",
-            "--ignore-user-config",
-            "--strict-config",
-            "--sandbox",
-            "read-only",
-            "--skip-git-repo-check",
-            "--model",
-            self.model,
-            "--cd",
-            str(workspace),
-            "--output-schema",
-            str(schema),
-            "--output-last-message",
-            str(output),
-        ]
-        # These flags are checked by the installed CLI. Unsupported versions fail
-        # before inference rather than silently enabling interactive capabilities.
-        for feature in (
-            "shell_tool",
-            "apps",
-            "hooks",
-            "memories",
-            "multi_agent",
-            "multi_agent_v2",
-            "remote_plugin",
-            "plugins",
-            "goals",
-            "shell_snapshot",
-            "browser_use",
-            "computer_use",
-            "image_generation",
-            "view_image",
-            "skill_search",
-        ):
-            argv += ["--disable", feature]
-        argv += ["-c", 'web_search="disabled"', "-"]
+        if self.executor is run_process and self.features is None:
+            self.features = local_codex_features(self.executable)
+        argv = cli_argv(self.executable, workspace, self.model, features=self.features or CODEX_FEATURES)
         response = self.executor(argv, self.timeout, stdin=prompt)
         if response.stdout_truncated or response.stderr_truncated or response.limit_exceeded:
             raise BackendError("Codex response exceeded capture or resource limits; response discarded")

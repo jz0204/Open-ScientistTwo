@@ -111,11 +111,11 @@ def resume(campaign: Path, allow_live: bool = False, executable: str = "codex"):
 
 
 @app.command("check")
-def check(manifest: Path):
+def check(manifest: Path, executable: str = "codex"):
     """Check the frozen configuration, local credentials and images without inference."""
     from ..live.cli import check_provider
     spec = LivePilotManifest.model_validate(strict_json_loads(manifest.read_text()))
-    checks = check_provider(spec.options.provider)
+    checks = check_provider(spec.options.provider, executable)
     checks["implementation_matches"] = spec.implementation == implementation_identity()
     checks["live_model_calls"] = 0
     prefix = [spec.runtime] + (["--context", spec.context] if spec.context else [])

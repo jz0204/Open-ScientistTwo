@@ -20,13 +20,23 @@ def test_codex_disabled_before_any_process(tmp_path):
     assert not backend.workspace.exists()
 
 
+# The installed 0.144.1 CLI advertises unified_exec but omits view_image and skill_search.
+FEATURE_PROBE = """if sys.argv[1:] == ['features', 'list']:
+    for name in 'shell_tool apps hooks memories multi_agent multi_agent_v2 remote_plugin plugins goals shell_snapshot browser_use computer_use image_generation unified_exec'.split():
+        print(name, 'stable', 'true')
+    sys.exit(0)
+"""
+
+
 def fake_cli(
     tmp_path, response, event='{"type":"turn.completed","usage":{"input_tokens":12}}', code=0
 ):
     path = tmp_path / "fake-codex"
     path.write_text(f"""#!{sys.executable}
 import sys, pathlib
+{FEATURE_PROBE}
 argv = sys.argv
+assert "view_image" not in argv and "skill_search" not in argv and "unified_exec" in argv
 assert '--json' in argv and '--ephemeral' in argv
 assert argv[argv.index('--sandbox') + 1] == 'read-only'
 sys.stdin.read()
