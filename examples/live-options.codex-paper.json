@@ -1,8 +1,7 @@
 {
-  "model": "gpt-6.1-terra",
+  "model": "gpt-6-astra",
   "provider": {
-    "kind": "codex",
-    "paper_coding_model": "gpt-6-astra"
+    "kind": "codex"
   },
   "max_calls": 80,
   "token_stop_threshold": 3000000,

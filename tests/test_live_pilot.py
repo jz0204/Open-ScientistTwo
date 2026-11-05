@@ -1,7 +1,6 @@
 """Live-pilot contracts with an executable fake CLI; no actual model or container."""
 from copy import deepcopy
 import json
-from pathlib import Path
 import time
 
 import pytest
@@ -149,9 +148,8 @@ def test_real_fake_cli_roundtrip_has_durable_direct_accounting_without_queue(tmp
 
 def test_paper_profile_dispatch_records_and_charges_both_models(tmp_path, fake_cli):
     cli, counter = fake_cli
-    preset = Path(__file__).resolve().parents[1] / "examples/live-options.codex-paper.json"
-    chosen = live.LivePilotOptions.model_validate_json(preset.read_text())
-    chosen.max_calls = 2
+    chosen = options(model="gpt-6.1-terra", max_calls=2,
+                     provider={"kind": "codex", "paper_coding_model": "gpt-6-astra"})
     store, config, adapter, runner, _ = setup(tmp_path, chosen)
     executor = live.DirectPilotExecutor(store.root / "model-ledger", config, time.time() + 60,
                                         executable=str(cli), allow_live=True)

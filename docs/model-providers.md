@@ -14,8 +14,8 @@ The desktop chat model coordinates the work. The frozen manifest selects the
 models that actually answer the research roles.
 
 [Appendix A.2](https://arxiv.org/html/2609.19644v1) assigns Gemini 3.6 Flash
-by default and Claude Code with Opus 4.8 to four groups. This fork maps that
-division to two Codex models. The mapping is a local choice.
+by default and Claude Code with Opus 4.8 to four groups. The default Codex profile uses
+`gpt-6-astra` for every role.
 
 | Work | Roles in the canonical controller | Model in this profile |
 | --- | --- | --- |
@@ -23,11 +23,11 @@ division to two Codex models. The mapping is a local choice.
 | Ablation study | `ablation_planner`, `ablation_coder`, `ablations` | GPT-6-Astra |
 | Rebuttal experiments | `rebuttal_planner`, `rebuttal_coder`, `rebuttal` | GPT-6-Astra |
 | Manuscript revision | `draft_enhancer` | GPT-6-Astra |
-| Research direction and hypotheses | `limitations`, `verify_limitations`, `seeds`, `initial_idea`, `additional_idea`, `novelty_checker`, `evolve`, `refine` | GPT-6.1 Terra |
-| Experimental planning and judgment | `baseline_plan`, `critic`, `selection_review`, `control_reviewer`, `ablation_critic`, `method_disposition` | GPT-6.1 Terra |
-| Initial writing and review | `draft`, `initial_drafter`, `writing_critic`, `review`, `scientific_review`, `meta` | GPT-6.1 Terra |
+| Research direction and hypotheses | `limitations`, `verify_limitations`, `seeds`, `initial_idea`, `additional_idea`, `novelty_checker`, `evolve`, `refine` | GPT-6-Astra |
+| Experimental planning and judgment | `baseline_plan`, `critic`, `selection_review`, `control_reviewer`, `ablation_critic`, `method_disposition` | GPT-6-Astra |
+| Initial writing and review | `draft`, `initial_drafter`, `writing_critic`, `review`, `scientific_review`, `meta` | GPT-6-Astra |
 
-`provider.paper_coding_model` sets the model for the four groups. Calls share one
+To override the model for the first four groups, set `provider.paper_coding_model`. Calls share one
 ledger and one budget, including corrections. The example uses the bounded CPU
 pilot settings (80 calls, 3M observed tokens, local literature). Copy the options
 and set the appropriate limits before freezing a new study. Omit the second

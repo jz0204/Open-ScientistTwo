@@ -9,7 +9,7 @@ Providers include Codex CLI, OpenAI, Anthropic/Claude, and custom
 OpenAI-compatible endpoints. See [model providers](model-providers.md) for API
 configuration, supported response modes, image capability and secret handling.
 The manifest freezes the provider and model assignment for the entire campaign.
-For the two-tier Codex assignment use the [Codex paper profile](model-providers.md#codex-paper-profile).
+For GPT-6-Astra across all research roles use the [Codex paper profile](model-providers.md#codex-paper-profile).
 
 Every live attempt needs an explicit model identifier, maximum calls, observed
 token stop threshold, campaign and per-call deadlines, and experiment limit.
