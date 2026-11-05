@@ -104,10 +104,22 @@ def _loopback(host):
         return False
 
 
+EffortLevel = Literal["low", "medium", "high", "xhigh"]
+
+
+class ResearchReasoningEffort(Record):
+    default: EffortLevel
+    paper_coding: EffortLevel
+
+    def for_role(self, role):
+        return self.paper_coding if role in PAPER_CODING_ROLES else self.default
+
+
 class ModelProvider(Record):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
     kind: Literal["codex", "openai", "anthropic", "openai_compatible"] = "codex"
+    reasoning_effort: ResearchReasoningEffort | None = None
     paper_coding_model: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,99}$")
     base_url: str | None = Field(default=None, min_length=1, max_length=2048)
     api_key_env: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
@@ -124,6 +136,8 @@ class ModelProvider(Record):
         # Existing single-model manifests and their hashes predate this option.
         if self.paper_coding_model is None:
             value.pop("paper_coding_model", None)
+        if self.reasoning_effort is None:
+            value.pop("reasoning_effort", None)
         return value
 
     @model_validator(mode="after")
@@ -135,7 +149,7 @@ class ModelProvider(Record):
                     or self.structured_output != "json_schema"):
                 raise ValueError("Codex uses its CLI transport; API-only options are not accepted")
             return self
-        if self.paper_coding_model is not None:
+        if self.paper_coding_model is not None or self.reasoning_effort is not None:
             raise ValueError("Paper role routing requires the Codex provider")
         if self.max_output_tokens is None:
             raise ValueError("API providers require an explicit max_output_tokens bound")

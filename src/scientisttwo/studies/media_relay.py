@@ -445,13 +445,15 @@ class LocalService:
     Re-serving a completed request returns the exact cached response. If a claim
     has no completion, all further dispatch fails closed pending manual review.
     """
-    def __init__(self, state, policy, *, executable, executor=None, allow_live=False, synthetic=False):
+    def __init__(self, state, policy, *, executable, executor=None, allow_live=False, synthetic=False,
+                 reasoning_effort=None):
         from scientisttwo.process import run_process
         if not allow_live and not synthetic:
             raise RelayError("Live relay dispatch requires explicit allow_live=True")
         policy.verify_relay_source()
         self.state, self.policy = private_directory(state), policy
         self.synthetic = synthetic
+        self.reasoning_effort = reasoning_effort
         self.executable = str(Path(executable).resolve())
         if not Path(self.executable).is_file():
             raise RelayError("Explicit local Codex executable is missing")
@@ -522,6 +524,7 @@ class LocalService:
         started = time.time()
         observed_tokens, usage_status = 0, "known"
         cli_diagnostics = None
+        effort = self.reasoning_effort.for_role(request["role"]) if self.reasoning_effort else None
         # A crash/exception from this point intentionally leaves an unknown claim.
         with tempfile.TemporaryDirectory(prefix="scientisttwo-local-codex-") as temporary:
             directory = Path(temporary)
@@ -542,7 +545,7 @@ class LocalService:
                 output = None
             else:
                 raw = self.executor(cli_argv(self.executable, directory, request["model"], images=images,
-                                             features=self.features), remaining,
+                                             features=self.features, reasoning_effort=effort), remaining,
                                     stdin=request["prompt"], max_output_bytes=OUTPUT_LIMIT)
                 observed_tokens, jsonl_diagnostic = usage_diagnostic(raw.stdout)
                 cli_diagnostics = {
@@ -597,6 +600,7 @@ class LocalService:
             "observed_tokens": observed_tokens, "prior_observed_tokens": tokens,
             "usage_status": usage_status, "source_sha256": self.policy.source_sha256,
             "cli_diagnostics": cli_diagnostics,
+            **({"reasoning_effort": effort} if effort is not None else {}),
             "relay_sha256": self.policy.relay_sha256,
             "media": [{key: item[key] for key in ("filename", "mime_type", "sha256", "bytes")}
                       for item in request["media"]],

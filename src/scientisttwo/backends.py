@@ -465,7 +465,7 @@ def local_codex_features(executable):
     return tuple(name for name in CODEX_FEATURES if name in available)
 
 
-def cli_argv(executable, directory, model, *, images=(), features=CODEX_FEATURES):
+def cli_argv(executable, directory, model, *, images=(), features=CODEX_FEATURES, reasoning_effort=None):
     directory = Path(directory)
     argv = [str(executable), "exec", "--json", "--ephemeral", "--ignore-user-config",
             "--strict-config", "--sandbox", "read-only", "--skip-git-repo-check", "--model",
@@ -474,6 +474,8 @@ def cli_argv(executable, directory, model, *, images=(), features=CODEX_FEATURES
     for name in features:
         argv += ["--disable", name]
     argv += ["-c", 'web_search="disabled"']
+    if reasoning_effort is not None:
+        argv += ["-c", f'model_reasoning_effort="{reasoning_effort}"']
     for image in images:
         argv += ["--image", str(image)]
     return argv + ["-"]

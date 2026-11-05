@@ -188,7 +188,7 @@ class LivePilotOptions(Record):
                 raise ValueError("Codex model identifier exceeds its frozen CLI transport contract")
         if self.model.startswith(("scripted", "fixture")):
             raise ValueError("Live pilot options require an explicit non-fixture model identifier")
-        if self.provider.paper_coding_model and self.workflow.writer_backend != "canonical":
+        if (self.provider.paper_coding_model or self.provider.reasoning_effort) and self.workflow.writer_backend != "canonical":
             raise ValueError("Paper role routing requires the canonical writer")
         if self.workflow.profile == "offline-pilot" or self.workflow.network_literature:
             raise ValueError("A live pilot requires a research workflow with frozen local literature")
@@ -248,7 +248,8 @@ class DirectPilotExecutor:
             relay_sha256=file_digest(Path(relay.__file__)), max_calls=calls,
             token_stop_threshold=tokens, call_seconds=config.call_seconds)
         self.service = relay.LocalService(Path(root), self.policy, executable=command,
-                                          executor=executor, allow_live=True)
+                                          executor=executor, allow_live=True,
+                                          reasoning_effort=config.provider.reasoning_effort)
 
     def __call__(self, argv, timeout, *, stdin=None):
         if self.accounting_store is not None:

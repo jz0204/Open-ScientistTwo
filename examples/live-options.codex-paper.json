@@ -1,7 +1,8 @@
 {
   "model": "gpt-6-astra",
   "provider": {
-    "kind": "codex"
+    "kind": "codex",
+    "reasoning_effort": {"default": "xhigh", "paper_coding": "low"}
   },
   "max_calls": 80,
   "token_stop_threshold": 3000000,
