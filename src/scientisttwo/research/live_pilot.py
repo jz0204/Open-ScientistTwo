@@ -43,7 +43,7 @@ def _validated_dispatches(items, policy):
         identifiers.add(identifier)
         if (claim.get("request_sha256") != identity or receipt.get("request_sha256") != identity
                 or receipt.get("status") != "completed" or receipt.get("usage_status") != "known"
-                or receipt.get("synthetic") is not False or receipt.get("model") != policy.model
+                or receipt.get("synthetic") is not False or receipt.get("model") != request["model"]
                 or type(receipt.get("observed_tokens")) is not int or receipt["observed_tokens"] < 0
                 or receipt.get("returncode") != process["code"]
                 or receipt.get("source_sha256", policy.source_sha256) != policy.source_sha256
@@ -95,7 +95,7 @@ def validate_inherited_model_accounting(store, config, deadline=None):
     same_limits = ("model", "max_calls", "token_stop_threshold", "call_seconds", "campaign_seconds", "max_experiments")
     if (any(getattr(parent, key) != getattr(config, key) for key in same_limits)
             or manifest["parent_deadline"] != deadline or policy.expires_at != deadline
-            or policy.model != parent.model or policy.allowed_models != (parent.model,)
+            or not policy.matches_campaign_models(parent) or parent.provider != config.provider
             or policy.max_calls != parent.max_calls or policy.token_stop_threshold != parent.token_stop_threshold
             or policy.call_seconds != parent.call_seconds
             or policy.source_sha256 != digest(canonical(parent.implementation))
@@ -188,6 +188,8 @@ class LivePilotOptions(Record):
                 raise ValueError("Codex model identifier exceeds its frozen CLI transport contract")
         if self.model.startswith(("scripted", "fixture")):
             raise ValueError("Live pilot options require an explicit non-fixture model identifier")
+        if self.provider.paper_coding_model and self.workflow.writer_backend != "canonical":
+            raise ValueError("Paper role routing requires the canonical writer")
         if self.workflow.profile == "offline-pilot" or self.workflow.network_literature:
             raise ValueError("A live pilot requires a research workflow with frozen local literature")
         if (self.provider.kind != "codex" and self.workflow.writer_backend == "paperorchestra"
@@ -235,9 +237,13 @@ class DirectPilotExecutor:
         tokens = config.token_stop_threshold - self.inherited["tokens"]
         if calls <= 0 or tokens <= 0:
             raise relay.RelayError("Inherited dispatches exhausted the unchanged global model budget")
-        self.policy = relay.RelayPolicy(
+        coding_model = config.provider.paper_coding_model
+        models = tuple(dict.fromkeys([config.model, coding_model])) if coding_model else (config.model,)
+        policy_type = relay.PaperRelayPolicy if coding_model else relay.RelayPolicy
+        self.policy = policy_type(
             run_id="pilot-" + digest(str(Path(root).resolve()).encode())[:32],
-            expires_at=deadline, model=config.model, allowed_models=(config.model,),
+            expires_at=deadline, model=config.model, allowed_models=models,
+            **({"paper_coding_model": coding_model} if coding_model else {}),
             source_sha256=digest(canonical(config.implementation)),
             relay_sha256=file_digest(Path(relay.__file__)), max_calls=calls,
             token_stop_threshold=tokens, call_seconds=config.call_seconds)
@@ -255,8 +261,7 @@ class DirectPilotExecutor:
             raise relay.RelayError("Unexpected direct pilot invocation")
         directory = Path(argv[argv.index("--cd") + 1])
         images = [argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "--image"]
-        if argv != relay.cli_argv("codex", directory, self.policy.model, images=images):
-            raise relay.RelayError("Direct pilot argv differs from the fixed response-only backend")
+        model = self.policy.command_model(argv, directory, images)
         relay.private_directory(directory)
         schema = relay.read_json(directory / "response-schema.json", relay.SCHEMA_LIMIT, private=False)
         role = relay.validate_prompt_schema(stdin, schema)
@@ -269,7 +274,7 @@ class DirectPilotExecutor:
             return ProcessResult(**relay._result(124, timed_out=True, stderr="Direct pilot deadline expired"))
         request = {"schema_version": 2, "request_id": uuid.uuid4().hex,
                    "policy_sha256": self.policy.identity, "run_id": self.policy.run_id,
-                   "model": self.policy.model, "role": role, "created_at": now,
+                   "model": model, "role": role, "created_at": now,
                    "deadline": deadline, "timeout": timeout, "prompt": stdin, "schema": schema,
                    "source_sha256": self.policy.source_sha256, "media": media}
         response = self.service.serve(request)
@@ -362,7 +367,7 @@ def run_prepared_live(store, config, adapter, runner, *, allow_live=False, execu
                                    executable=executable, executor=process_executor, allow_live=True,
                                    accounting_store=store)
     backend = CodexBackend(store.root / "agent", config.model, allow_live=True,
-                           timeout=config.call_seconds, executor=executor)
+                           timeout=config.call_seconds, executor=executor, model_for_role=executor.policy.model_for_role)
     from .controller import ResearchController
     controller = ResearchController(store, config, adapter, backend, runner, budget=runner.budget,
                                     allow_network_literature=allow_network_literature)

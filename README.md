@@ -25,6 +25,15 @@ resume. See the [verification record](docs/validation.md#api-provider-extension)
 for source identity, test counts, and limits. Hosted results are tracked in the
 [release workflow](https://github.com/duyvuleo/Open-ScientistTwo/actions/workflows/release.yml).
 
+## Start a research direction in Codex
+
+Open a checkout of this fork as a Codex project. Ask the chat to use the
+[Codex paper profile](docs/model-providers.md#codex-paper-profile), describe
+your direction, and identify any benchmark or data you want to use. Freeze the
+task, evaluation protocol and model budget before launching. Use a separate
+run directory and manifest for each direction. An independent clone per
+direction also separates code edits and local environments.
+
 ## Start with the CPU example
 
 Use Python 3.12, `uv`, and an existing Docker installation on Linux or macOS.

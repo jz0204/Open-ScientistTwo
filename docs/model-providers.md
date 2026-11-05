@@ -2,10 +2,37 @@
 
 The same research controller can use Codex CLI, the OpenAI Responses API, the
 Anthropic Messages API, or an OpenAI-compatible Chat Completions endpoint.
-Select one provider and model per campaign. The selected backend handles the
-research roles and, when enabled, PaperOrchestra's writing and review calls.
-Frozen suite assignments may select different providers; per-role model routing
-is not part of this interface.
+Each campaign freezes its provider and default model. The canonical Codex writer
+also supports the paper's two-tier role assignment.
+
+## Codex paper profile
+
+Use [the prepared options](../examples/live-options.codex-paper.json) as the
+options argument to `live-pilot create`. In Codex chat, ask to use the
+**Codex paper profile** and give the research question and evaluation task.
+The desktop chat model coordinates the work. The frozen manifest selects the
+models that actually answer the research roles.
+
+[Appendix A.2](https://arxiv.org/html/2609.19644v1) assigns Gemini 3.6 Flash
+by default and Claude Code with Opus 4.8 to four groups. This fork maps that
+division to two Codex models. The mapping is a local choice.
+
+| Work | Roles in the canonical controller | Model in this profile |
+| --- | --- | --- |
+| Experiment implementation and repair | `baseline_coder`, `baseline_engineer`, `implement`, `engineer`, `full_set_coder` | GPT-6-Astra |
+| Ablation study | `ablation_planner`, `ablation_coder`, `ablations` | GPT-6-Astra |
+| Rebuttal experiments | `rebuttal_planner`, `rebuttal_coder`, `rebuttal` | GPT-6-Astra |
+| Manuscript revision | `draft_enhancer` | GPT-6-Astra |
+| Research direction and hypotheses | `limitations`, `verify_limitations`, `seeds`, `initial_idea`, `additional_idea`, `novelty_checker`, `evolve`, `refine` | GPT-6.1 Terra |
+| Experimental planning and judgment | `baseline_plan`, `critic`, `selection_review`, `control_reviewer`, `ablation_critic`, `method_disposition` | GPT-6.1 Terra |
+| Initial writing and review | `draft`, `initial_drafter`, `writing_critic`, `review`, `scientific_review`, `meta` | GPT-6.1 Terra |
+
+`provider.paper_coding_model` sets the model for the four groups. Calls share one
+ledger and one budget, including corrections. The example uses the bounded CPU
+pilot settings (80 calls, 3M observed tokens, local literature). Copy the options
+and set the appropriate limits before freezing a new study. Omit the second
+model to run every role with the default. The mixed profile uses the canonical
+writer because PaperOrchestra shares a transport role across writing stages.
 
 | `provider.kind` | Transport | Authentication configuration |
 | --- | --- | --- |

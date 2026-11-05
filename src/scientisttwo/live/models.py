@@ -270,6 +270,10 @@ class LiveSpec(Record):
     def valid(self):
         from ..providers.config import assert_credential_free
         assert_credential_free(self.provider, self.model_dump(mode="json"))
+        if self.provider.paper_coding_model and (
+            self.engine_version != "research-v2" or self.workflow.writer_backend != "canonical"
+        ):
+            raise ValueError("Paper role routing requires research-v2 with the canonical writer")
         if self.native.mode != "baseline":
             raise ValueError("Live campaigns start from a frozen baseline manifest")
         if len({s.id for s in self.sources}) != len(self.sources) or any(

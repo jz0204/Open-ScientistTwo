@@ -1,0 +1,24 @@
+{
+  "model": "gpt-6.1-terra",
+  "provider": {
+    "kind": "codex",
+    "paper_coding_model": "gpt-6-astra"
+  },
+  "max_calls": 80,
+  "token_stop_threshold": 3000000,
+  "campaign_seconds": 5400,
+  "call_seconds": 300,
+  "max_experiments": 30,
+  "model_retries": 0,
+  "workflow": {
+    "profile": "research-pilot",
+    "writer_backend": "canonical",
+    "network_literature": false,
+    "literature": {"providers": ["local"]},
+    "seed_ideas": 2,
+    "novelty_attempts": 1,
+    "max_ablation_plans": 1
+  },
+  "search_rounds": 1,
+  "success_target": 1
+}

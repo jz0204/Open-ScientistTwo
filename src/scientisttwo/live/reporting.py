@@ -2,6 +2,8 @@
 
 import json
 
+from ..providers.config import campaign_coding_model
+
 
 def tex(value):
     mapping = {
@@ -56,10 +58,12 @@ def write_report(store, config, synthetic):
     ]
     parent_edits = [{"key": row[0], "evidence_ref": row[1]}
                     for row in store.db.execute("SELECT key,output_ref FROM calls WHERE key LIKE 'parent-edit/%' ORDER BY key")]
+    coding_model = campaign_coding_model(config)
     summary = {
         "state": state,
         "mode": config.mode,
         "model": config.model,
+        **({"paper_coding_model": coding_model} if coding_model else {}),
         "synthetic_agents": synthetic,
         "model_attempts": len(calls),
         "live_model_calls": 0 if synthetic else len(calls),
@@ -100,6 +104,9 @@ def write_report(store, config, synthetic):
         f"Internal meta-review: {meta_status}; recorded decision: {meta_decision or 'none'}. "
         "Campaign termination and revision-limit exhaustion do not imply review acceptance."
     )
+    model_description = config.model
+    if coding_model:
+        model_description += f" (default), {coding_model} (paper coding roles)"
     lines = [
         f"# {title}",
         "",
@@ -109,7 +116,7 @@ def write_report(store, config, synthetic):
         "",
         review_status_text,
         "",
-        f"Mode: {config.mode}. Model: {config.model}. Synthetic agents: {synthetic}.",
+        f"Mode: {config.mode}. Model: {model_description}. Synthetic agents: {synthetic}.",
         f"Model attempts: {len(calls)}. Observed tokens: {summary['observed_tokens']}. Failed/interrupted call usage can be unknown.",
         "",
         f"Data provenance: {config.native.data_provenance}. Leaderboard eligible: false.",

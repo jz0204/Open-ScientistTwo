@@ -228,6 +228,24 @@ class RelayPolicy:
                 or not _finite(self.call_seconds) or not 0 < self.call_seconds <= 600):
             raise RelayError("Invalid explicitly bounded live relay policy")
 
+    paper_coding_model = None
+
+    def model_for_role(self, role):
+        from ..providers.config import research_role_model
+        return research_role_model(self.model, role, self.paper_coding_model)
+
+    def command_model(self, argv, directory, images):
+        for model in self.allowed_models:
+            if argv == cli_argv("codex", directory, model, images=images):
+                return model
+        raise RelayError("Codex argv differs from the fixed response-only backend")
+
+    def matches_campaign_models(self, config):
+        return (self.model == config.model
+                and self.paper_coding_model == config.provider.paper_coding_model
+                and self.allowed_models == tuple(dict.fromkeys(
+                    m for m in (self.model, self.paper_coding_model) if m is not None)))
+
     @property
     def identity(self):
         return sha(canonical(asdict(self)))
@@ -239,10 +257,23 @@ class RelayPolicy:
     @classmethod
     def from_mapping(cls, value):
         """Read a complete frozen JSON policy, without filling missing limits."""
+        if isinstance(value, dict) and "paper_coding_model" in value:
+            cls = PaperRelayPolicy
         if (not isinstance(value, dict) or set(value) != {item.name for item in fields(cls)}
                 or not isinstance(value.get("allowed_models"), (list, tuple))):
             raise RelayError("Frozen relay policy is incomplete or contains unknown fields")
         return cls(**{**value, "allowed_models": tuple(value["allowed_models"])})
+
+
+@dataclass(frozen=True)
+class PaperRelayPolicy(RelayPolicy):
+    """Keep the original single-model policy and its serialized hash intact."""
+    paper_coding_model: str = ""
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.paper_coding_model not in self.allowed_models:
+            raise RelayError("Paper coding model is outside the frozen allowlist")
 
 
 def validate_prompt_schema(prompt, schema):
@@ -277,7 +308,7 @@ def validate_request(request, policy, *, now=None):
             or request["schema_version"] != 2
             or not re.fullmatch(r"[0-9a-f]{32}", str(request["request_id"]))
             or request["policy_sha256"] != policy.identity or request["run_id"] != policy.run_id
-            or request["model"] != policy.model or request["source_sha256"] != policy.source_sha256):
+            or request["source_sha256"] != policy.source_sha256):
         raise RelayError("Request does not match the frozen relay policy")
     timeout, created, deadline = (request[name] for name in ("timeout", "created_at", "deadline"))
     if (not all(map(_finite, (timeout, created, deadline))) or not 0 < timeout <= policy.call_seconds
@@ -286,6 +317,8 @@ def validate_request(request, policy, *, now=None):
         raise RelayError("Request deadline is invalid or exceeds the approved policy")
     if request["role"] != validate_prompt_schema(request["prompt"], request["schema"]):
         raise RelayError("Request role differs from its actual prompt")
+    if request["model"] != policy.model_for_role(request["role"]):
+        raise RelayError("Request model differs from the frozen relay policy for this role")
     validate_media(request["media"], request["role"])
     if request["media"]:
         # The controller already admitted each page against an immutable store
@@ -359,8 +392,8 @@ class QueueExecutor:
             raise RelayError("Unexpected remote Codex command")
         directory = Path(argv[argv.index("--cd") + 1])
         images = [argv[i + 1] for i, value in enumerate(argv[:-1]) if value == "--image"]
-        if (argv != cli_argv("codex", directory, self.policy.model, images=images)
-                or not directory.is_absolute() or directory.is_symlink()
+        model = self.policy.command_model(argv, directory, images)
+        if (not directory.is_absolute() or directory.is_symlink()
                 or not directory.is_dir()):
             raise RelayError("Remote argv differs from the fixed response-only backend")
         private_directory(directory)
@@ -378,7 +411,7 @@ class QueueExecutor:
         if deadline <= now:
             return ProcessResult(**_result(124, timed_out=True, stderr="Relay policy expired"))
         request: RelayRequest = dict(schema_version=2, request_id=uuid.uuid4().hex, policy_sha256=self.policy.identity,
-                       run_id=self.policy.run_id, model=self.policy.model, role=role, created_at=now,
+                       run_id=self.policy.run_id, model=model, role=role, created_at=now,
                        deadline=deadline, timeout=timeout, prompt=stdin, schema=schema,
                        source_sha256=self.policy.source_sha256, media=media)
         validate_request(request, self.policy)
@@ -508,7 +541,7 @@ class LocalService:
                 result = _result(124, timed_out=True, stderr="Insufficient response transfer time")
                 output = None
             else:
-                raw = self.executor(cli_argv(self.executable, directory, self.policy.model, images=images,
+                raw = self.executor(cli_argv(self.executable, directory, request["model"], images=images,
                                              features=self.features), remaining,
                                     stdin=request["prompt"], max_output_bytes=OUTPUT_LIMIT)
                 observed_tokens, jsonl_diagnostic = usage_diagnostic(raw.stdout)
@@ -569,7 +602,7 @@ class LocalService:
                       for item in request["media"]],
             "token_stop_threshold_kind": "observed_after_call_not_hard_cap",
             "returncode": result["code"], "timed_out": result["timed_out"],
-            "status": "completed", "synthetic": self.synthetic, "model": self.policy.model,
+            "status": "completed", "synthetic": self.synthetic, "model": request["model"],
         })
         publish_new(entry / "response.json", response)
         return response

@@ -8,7 +8,7 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_serializer, model_validator
 
 from ..models import Record
 
@@ -19,6 +19,27 @@ OFFICIAL_BASE_URLS = {
     "anthropic": "https://api.anthropic.com/v1",
 }
 DEFAULT_KEY_ENVS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
+
+
+PAPER_CODING_ROLES = frozenset({
+    "baseline_coder", "baseline_engineer", "implement", "engineer", "full_set_coder",
+    "ablations", "ablation_planner", "ablation_coder", "rebuttal", "rebuttal_planner",
+    "rebuttal_coder", "draft_enhancer",
+})
+
+
+def research_role_model(default_model, role, paper_coding_model):
+    if paper_coding_model and role in PAPER_CODING_ROLES:
+        return paper_coding_model
+    return default_model
+
+
+def campaign_coding_model(config):
+    return getattr(getattr(config, "provider", None), "paper_coding_model", None)
+
+
+def campaign_role_model(config, role):
+    return research_role_model(config.model, role, campaign_coding_model(config))
 
 
 def _credential_from_environment(name, environ, *, allow_missing=False):
@@ -87,6 +108,7 @@ class ModelProvider(Record):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
     kind: Literal["codex", "openai", "anthropic", "openai_compatible"] = "codex"
+    paper_coding_model: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,99}$")
     base_url: str | None = Field(default=None, min_length=1, max_length=2048)
     api_key_env: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
     max_output_tokens: int | None = Field(default=None, gt=0, le=1_000_000, strict=True)
@@ -95,6 +117,14 @@ class ModelProvider(Record):
     temperature: float | None = Field(default=None, ge=0, le=2, strict=True)
     api_version: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     allow_insecure_http: bool = Field(default=False, strict=True)
+
+    @model_serializer(mode="wrap")
+    def frozen_declaration(self, serialize):
+        value = serialize(self)
+        # Existing single-model manifests and their hashes predate this option.
+        if self.paper_coding_model is None:
+            value.pop("paper_coding_model", None)
+        return value
 
     @model_validator(mode="after")
     def configured_transport(self):
@@ -105,6 +135,8 @@ class ModelProvider(Record):
                     or self.structured_output != "json_schema"):
                 raise ValueError("Codex uses its CLI transport; API-only options are not accepted")
             return self
+        if self.paper_coding_model is not None:
+            raise ValueError("Paper role routing requires the Codex provider")
         if self.max_output_tokens is None:
             raise ValueError("API providers require an explicit max_output_tokens bound")
         self.base_url = self.base_url or OFFICIAL_BASE_URLS.get(self.kind)

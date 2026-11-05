@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 from statistics import fmean
 
+from ..providers.config import campaign_role_model
 from ..catalog import CLASSIFICATION, REGRESSION, OPTIMIZATION
 from ..models import AgentResult, EvalSpec, ExperimentResult, TaskSpec
 from ..live.models import LiveSpec, Observation
@@ -154,7 +155,8 @@ def _roles(store, config):
         key = row["key"][len("live-agent/"):]
         request = store.json(store.get("request/" + key))
         response = AgentResult.model_validate(store.json(row["output_ref"]))
-        if (response.synthetic or response.backend != _backend_name(config) or response.model != config.model
+        if (response.synthetic or response.backend != _backend_name(config)
+                or response.model != campaign_role_model(config, request["role"])
                 or row["input_hash"] != digest(canonical(request))):
             raise IntegrityError("Agent provenance or exact request binding differs")
         operations = [op for op in store.db.execute("SELECT * FROM live_operations WHERE kind='model'")
@@ -177,7 +179,7 @@ def _model_accounting(store, config):
     policy = relay.RelayPolicy.from_mapping(relay.read_json(root / "policy.json", 4096))
     if (summary["ledger"] != str(root) or summary["transport"] != "direct_local_no_queue"
             or canonical(summary["policy"]) != canonical(asdict(policy))
-            or policy.model != config.model or policy.source_sha256 != digest(canonical(config.implementation))
+            or not policy.matches_campaign_models(config) or policy.source_sha256 != digest(canonical(config.implementation))
             or policy.expires_at != store.get("live_deadline") or policy.max_calls != config.max_calls
             or policy.token_stop_threshold != config.token_stop_threshold):
         raise IntegrityError("Direct-model accounting policy differs from the frozen campaign")
@@ -194,7 +196,7 @@ def _model_accounting(store, config):
         if (entry.name != claim["request"]["request_id"] or claim["request_sha256"] != identity
                 or receipt["request_sha256"] != identity or receipt.get("status") != "completed"
                 or receipt.get("usage_status") != "known" or receipt.get("synthetic") is not False
-                or receipt.get("model") != config.model or type(receipt.get("observed_tokens")) is not int
+                or receipt.get("model") != claim["request"]["model"] or type(receipt.get("observed_tokens")) is not int
                 or receipt["observed_tokens"] < 0 or receipt["returncode"] != response["process"]["code"]):
             raise IntegrityError("Direct-model provenance, completion or token usage is unknown")
         records.append(receipt)
@@ -225,7 +227,7 @@ def _composite_model_accounting(store, config):
     root = store.root / "model-ledger"
     _ledger_files(root)
     policy = relay.RelayPolicy.from_mapping(relay.read_json(root / "policy.json", 4096))
-    if (policy.model != config.model or policy.allowed_models != (config.model,)
+    if (not policy.matches_campaign_models(config)
             or policy.source_sha256 != digest(canonical(config.implementation))
             or policy.relay_sha256 != config.implementation.get("studies/media_relay.py")
             or policy.expires_at != store.get("live_deadline") or policy.call_seconds != config.call_seconds

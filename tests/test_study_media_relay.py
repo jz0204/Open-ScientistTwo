@@ -52,7 +52,7 @@ def fake_cli(tmp_path):
         f"counter=pathlib.Path({str(counter)!r})",
         "with counter.open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')",
         "assert sys.argv[1] == 'exec'",
-        "assert sys.argv[sys.argv.index('--model')+1] == 'gpt-6-astra'",
+        "assert sys.argv[sys.argv.index('--model')+1] in {'gpt-6-astra', 'gpt-6.1-terra'}",
         "assert sys.argv[sys.argv.index('--sandbox')+1] == 'read-only'",
         "prompt=json.load(sys.stdin)",
         "schema=json.loads(pathlib.Path(sys.argv[sys.argv.index('--output-schema')+1]).read_text())",

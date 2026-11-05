@@ -7,6 +7,7 @@ import time
 
 from ..backends import BackendError
 from ..runner import PrerequisiteError
+from ..providers.config import campaign_role_model
 from ..models import AgentResult, CriticDecision, Refinement
 from ..store import IntegrityError, canonical, digest
 from ..live.adapters import implementation_identity
@@ -206,7 +207,7 @@ class ResearchController(ResearchStages):
             "role": role,
             "inputs": raw_inputs,
             "schema": schema.model_json_schema(),
-            "model": self.config.model,
+            "model": campaign_role_model(self.config, role),
             "prompt_version": "research-v2-complete-workflow" if self.research_enabled else "native-live-v6-typed-manuscript-revisions",
         }
         request_guard = getattr(self.backend, "validate_request_for_storage", None)
@@ -277,7 +278,7 @@ class ResearchController(ResearchStages):
             started = time.monotonic()
             try:
                 result = self.backend.invoke(role, inputs, schema)
-                if result.synthetic != self.backend.synthetic or result.model != self.config.model:
+                if result.synthetic != self.backend.synthetic or result.model != request["model"]:
                     raise IntegrityError("Agent/model provenance mismatch")
                 parsed = schema.model_validate(result.payload)
                 tokens = sum(

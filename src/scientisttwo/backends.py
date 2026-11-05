@@ -493,11 +493,13 @@ class CodexBackend:
         timeout=120,
         executor=run_process,
         features=None,
+        model_for_role=None,
     ):
         self.workspace, self.model = workspace, model
         self.executable, self.allow_live = executable, allow_live
         self.timeout, self.executor = timeout, executor
         self.features = features
+        self.model_for_role = model_for_role
         self.events = []
 
     def invoke(self, role, inputs, output_schema):
@@ -545,7 +547,8 @@ class CodexBackend:
         ).decode()
         if self.executor is run_process and self.features is None:
             self.features = local_codex_features(self.executable)
-        argv = cli_argv(self.executable, workspace, self.model, features=self.features or CODEX_FEATURES)
+        model = self.model_for_role(role) if self.model_for_role else self.model
+        argv = cli_argv(self.executable, workspace, model, features=self.features or CODEX_FEATURES)
         response = self.executor(argv, self.timeout, stdin=prompt)
         if response.stdout_truncated or response.stderr_truncated or response.limit_exceeded:
             raise BackendError("Codex response exceeded capture or resource limits; response discarded")
@@ -635,7 +638,7 @@ class CodexBackend:
             payload=validated,
             prompt_version=STRUCTURED_PROMPT_VERSION,
             backend=self.name,
-            model=self.model,
+            model=model,
             synthetic=self.synthetic,
             usage=usage,
         )

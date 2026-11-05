@@ -8,8 +8,8 @@ manifests, reports, or committed files.
 Providers include Codex CLI, OpenAI, Anthropic/Claude, and custom
 OpenAI-compatible endpoints. See [model providers](model-providers.md) for API
 configuration, supported response modes, image capability and secret handling.
-One provider/model is frozen per campaign; the same backend supplies its research
-and integrated writing roles.
+The manifest freezes the provider and model assignment for the entire campaign.
+For the two-tier Codex assignment use the [Codex paper profile](model-providers.md#codex-paper-profile).
 
 Every live attempt needs an explicit model identifier, maximum calls, observed
 token stop threshold, campaign and per-call deadlines, and experiment limit.

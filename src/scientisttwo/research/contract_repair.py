@@ -361,7 +361,7 @@ def fork_review_contract(parent_root, child_root, *, repair_id, authorization_re
         historical = _rows(database)
         operations = [dict(row) for row in database.execute("SELECT * FROM live_operations ORDER BY key")]
         policy = relay.RelayPolicy.from_mapping(relay.read_json(parent / "model-ledger/policy.json", 4096))
-        if (policy.model != old_spec.model or policy.source_sha256 != digest(canonical(old_spec.implementation))
+        if (not policy.matches_campaign_models(old_spec) or policy.source_sha256 != digest(canonical(old_spec.implementation))
                 or policy.expires_at != deadline or policy.max_calls != old_spec.max_calls
                 or policy.token_stop_threshold != old_spec.token_stop_threshold):
             raise IntegrityError("Original model policy differs from its frozen campaign")

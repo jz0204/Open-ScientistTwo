@@ -1,6 +1,7 @@
 """Live-pilot contracts with an executable fake CLI; no actual model or container."""
 from copy import deepcopy
 import json
+from pathlib import Path
 import time
 
 import pytest
@@ -9,6 +10,7 @@ from scientisttwo.backends import CodexBackend, BackendError
 from scientisttwo.models import Profile, TaskSpec
 from scientisttwo.process import ProcessResult
 from scientisttwo.research import live_pilot as live
+from scientisttwo.research.controller import ResearchController
 from scientisttwo.research.pilot_bridge import create_pilot_campaign
 from scientisttwo.research.policy import ResearchPolicy
 from scientisttwo.store import Store, IntegrityError
@@ -143,6 +145,36 @@ def test_real_fake_cli_roundtrip_has_durable_direct_accounting_without_queue(tmp
     (argv,) = map(json.loads, counter.read_text().splitlines())
     assert "view_image" not in argv and "skill_search" not in argv and "unified_exec" in argv
     assert not list(store.root.rglob("*.request.json"))
+
+
+def test_paper_profile_dispatch_records_and_charges_both_models(tmp_path, fake_cli):
+    cli, counter = fake_cli
+    preset = Path(__file__).resolve().parents[1] / "examples/live-options.codex-paper.json"
+    chosen = live.LivePilotOptions.model_validate_json(preset.read_text())
+    chosen.max_calls = 2
+    store, config, adapter, runner, _ = setup(tmp_path, chosen)
+    executor = live.DirectPilotExecutor(store.root / "model-ledger", config, time.time() + 60,
+                                        executable=str(cli), allow_live=True)
+    backend = CodexBackend(store.root / "agent", config.model, allow_live=True, timeout=30,
+                           executor=executor, model_for_role=executor.policy.model_for_role)
+    controller = ResearchController(store, config, adapter, backend, runner)
+    for role, expected in [("initial_idea", "gpt-6.1-terra"), ("draft_enhancer", "gpt-6-astra")]:
+        assert controller._ask_once(role, role, {}, Answer).answer == "actual fake CLI"
+        assert store.json(store.get("request/" + role))["model"] == expected
+    with pytest.raises(live.relay.RelayError, match="threshold"):
+        backend.invoke("implement", {}, Answer)
+    calls = [json.loads(line) for line in counter.read_text().splitlines()]
+    assert [args[args.index("--model") + 1] for args in calls] == ["gpt-6.1-terra", "gpt-6-astra"]
+    policy = live.relay.RelayPolicy.from_mapping(executor.accounting()["policy"])
+    assert policy.matches_campaign_models(config)
+    for path in executor.service.claims.glob("*/claim.json"):
+        request = json.loads(path.read_text())["request"]
+        receipt = json.loads(path.with_name("dispatch.json").read_text())
+        assert receipt["model"] == request["model"] == policy.model_for_role(request["role"])
+        other = next(model for model in policy.allowed_models if model != request["model"])
+        with pytest.raises(live.relay.RelayError, match="model"):
+            live.relay.validate_request({**request, "model": other}, policy)
+    assert executor.accounting()["known_observed_tokens"] == 24
 
 
 @pytest.mark.parametrize("failure", ["unknown_usage", "lost_completion"])
